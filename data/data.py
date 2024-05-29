@@ -77,6 +77,10 @@ class DataV0(DataBase):
             timestamps = [timestamps[i] for i in sorted_indices]
             sequences = [sequences[i] for i in sorted_indices]
 
+            if len(timestamps) < 2 or len(sequences[0]) < 2:
+                logging.warning(f"Not enough data points to plot for key {key}")
+                continue
+
             x = np.arange(len(sequences[0]))
             y = np.arange(len(timestamps))
             x, y = np.meshgrid(x, y)
