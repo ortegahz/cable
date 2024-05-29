@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -7,6 +8,8 @@ import numpy as np
 
 
 class DataBase:
+    _cnt = 0
+
     def __init__(self):
         self.db = dict()
 
@@ -60,7 +63,7 @@ class DataV0(DataBase):
                 self.db[_key] = self.Signal()
             self.db[_key].seq_chunk.append(_new_chunk)
 
-    def plot(self, dir_save=None, show=True, save_name=None):
+    def plot(self, dir_save=None, show=True, save_name_prefix=None):
         for key, signal in self.db.items():
             timestamps = []
             sequences = []
@@ -81,8 +84,11 @@ class DataV0(DataBase):
 
             fig = plt.figure(figsize=(12, 8))
             ax = fig.add_subplot(111, projection='3d')
-            surf = ax.plot_surface(x, y, z, cmap='coolwarm', edgecolor='none')
+            surf = ax.plot_surface(x, y, z, cmap='coolwarm', edgecolor='none', vmin=0, vmax=100)
             fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Temperature')
+
+            ax.set_zlim(0, 100)
+            ax.set_zticks(np.arange(0, 101, 10))
 
             ax.set_xlabel('Index')
             ax.set_ylabel('Timestamp')
@@ -94,6 +100,7 @@ class DataV0(DataBase):
             if show:
                 plt.show()
             if dir_save:
-                save_name = f"{save_name}_{key}.png"
-                plt.savefig(f"{dir_save}/{save_name}")
+                save_name = f'{DataV0._cnt}_{save_name_prefix}_{key}.png'
+                plt.savefig(os.path.join(dir_save, save_name))
+                DataV0._cnt += 1
             plt.close(fig)
