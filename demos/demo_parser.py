@@ -7,15 +7,18 @@ from utils.utils import set_logging
 def parse_args():
     parser = argparse.ArgumentParser()
     # parser.add_argument('--addr', default='/media/manu/data/cable/data_v0/neg/heta-cable.2024-05-24.0.log')
-    parser.add_argument('--addr', default='/media/manu/data/cable/data_v0/neg')
-    parser.add_argument('--db_type', default='DataV0')
+    # parser.add_argument('--addr', default='/media/manu/data/cable/data_v0/neg')
+    # parser.add_argument('--db_type', default='DataV0')
+    # parser.add_argument('--addr', default='/media/manu/data/cable/data_v1/1号线缆/c）1号 定温75℃报警不动作（12点24-17点29）.CSV')
+    parser.add_argument('--addr', default='/media/manu/data/cable/data_v1/runtime')
+    parser.add_argument('--db_type', default='DataV1')
     parser.add_argument('--dir_plot_save', default='/home/manu/tmp/cable_demo_parser_save')
     return parser.parse_args()
 
 
 def run(args):
     logging.info(args)
-    parser = ParserV1(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
+    parser = ParserV1CSV(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
     parser.parse()
 
 

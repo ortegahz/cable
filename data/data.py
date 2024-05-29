@@ -1,3 +1,4 @@
+import csv
 import logging
 import os
 from dataclasses import dataclass, field
@@ -32,6 +33,7 @@ class DataV0(DataBase):
     def __init__(self, addr):
         super().__init__()
         self.addr = addr
+        self.time_templet = '%H:%M:%S.%f'
 
     def load(self):
         logging.info(self.addr)
@@ -72,7 +74,7 @@ class DataV0(DataBase):
                 timestamps.append(chunk.timestamp)
                 sequences.append(chunk.seq_temperature)
 
-            timestamps = [datetime.strptime(ts, '%H:%M:%S.%f') for ts in timestamps]
+            timestamps = [datetime.strptime(ts, self.time_templet) for ts in timestamps]
             sorted_indices = np.argsort(timestamps)
             timestamps = [timestamps[i] for i in sorted_indices]
             sequences = [sequences[i] for i in sorted_indices]
@@ -108,3 +110,38 @@ class DataV0(DataBase):
                 plt.savefig(os.path.join(dir_save, save_name))
                 DataV0._cnt += 1
             plt.close(fig)
+
+
+class DataV1(DataV0):
+    @dataclass
+    class Chunk:
+        timestamp: str = ''
+        id: int = -1
+        seq_temperature: list = field(default_factory=list)
+
+    @dataclass
+    class Signal:
+        seq_chunk: list = field(default_factory=list)
+
+    def __init__(self, addr):
+        super().__init__(addr)
+        self.time_templet = '%H:%M:%S'
+
+    def load(self):
+        with open(self.addr, 'r', encoding='ISO-8859-1') as file:
+            reader = csv.reader(file, delimiter='\t')
+            for row in reader:
+                row_lst = row[0].strip().split(',')
+                logging.info(row_lst)
+                if len(row_lst) < 6:
+                    continue
+                timestamp = row_lst[1]
+                _id = int(row_lst[5])
+                temperatures = \
+                    [int(temp) if 'ALARM:' not in temp else int(temp.replace('ALARM:', '')) for temp in row_lst[6:]]
+                temperatures = [0 if x < 0 else x for x in temperatures]
+                logging.info((timestamp, _id, temperatures))
+                chunk = self.Chunk(timestamp=timestamp, id=_id, seq_temperature=temperatures)
+                if _id not in self.db.keys():
+                    self.db[_id] = self.Signal()
+                self.db[_id].seq_chunk.append(chunk)
