@@ -36,29 +36,32 @@ class DataV0(DataBase):
         self.time_templet = '%H:%M:%S.%f'
 
     def _chunk_merge(self):
-        # for _key in self.db.keys():
-        #     logging.info(f'_key --> {_key}')
-        _key_max = max(self.db.keys())
-        # _num_valid_group = len(self.db.keys())
-        _key_new = 'all'
-        self.db[_key_new] = self.Signal()
-        all_chunks = []
-        for signal in self.db.values():
-            all_chunks.extend(signal.seq_chunk)
-        sorted_chunks = sorted(all_chunks, key=lambda chunk: datetime.strptime(chunk.timestamp, self.time_templet))
-        for _chunk in sorted_chunks:
-            # logging.info(f'_chunk.timestamp --> {_chunk.timestamp}')
-            # logging.info(f'_chunk.idx_s --> {_chunk.idx_s}')
-            _chunk_ff_temperatures = [0] * (_key_max + 64 - 1)
-            # logging.info(f'len(_chunk_ff_temperatures) --> {len(_chunk_ff_temperatures)}')
-            _chunk_ff_temperatures[_chunk.idx_s - 1:_chunk.idx_s - 1 + 64] = _chunk.seq_temperature
-            _chunk_new = self.Chunk(
-                timestamp=_chunk.timestamp,
-                group_id=-1,
-                idx_s=-1,
-                seq_temperature=_chunk_ff_temperatures)
-            # logging.info(f'len(_chunk_ff_temperatures) --> {len(_chunk_ff_temperatures)}')
-            self.db[_key_new].seq_chunk.append(_chunk_new)
+        _keys = list(self.db.keys())
+        for _key in _keys:
+            logging.info(f'_key --> {_key}')
+            _idx_start_max = 0
+            for chunk in self.db[_key].seq_chunk:
+                _idx_start_max = chunk.idx_start if chunk.idx_start > _idx_start_max else _idx_start_max
+            logging.info(f'_idx_start_max --> {_idx_start_max}')
+            _key_new = _key + '_all'
+            self.db[_key_new] = self.Signal()
+            all_chunks = []
+            all_chunks.extend(self.db[_key].seq_chunk)
+            sorted_chunks = sorted(all_chunks, key=lambda chunk: datetime.strptime(chunk.timestamp, self.time_templet))
+            for _chunk in sorted_chunks:
+                # logging.info(f'_chunk.timestamp --> {_chunk.timestamp}')
+                # logging.info(f'_chunk.idx_s --> {_chunk.idx_s}')
+                _chunk_ff_temperatures = [0] * (_idx_start_max + 64 - 1)
+                _chunk_ff_temperatures[_chunk.idx_start - 1:_chunk.idx_start - 1 + 64] = _chunk.seq_temperature
+                _chunk_new = self.Chunk(
+                    timestamp=_chunk.timestamp,
+                    net='',
+                    module_id=-1,
+                    cable_id=-1,
+                    idx_start=-1,
+                    idx_end=-1,
+                    seq_temperature=_chunk_ff_temperatures)
+                self.db[_key_new].seq_chunk.append(_chunk_new)
 
     def load(self):
         logging.info(self.addr)
@@ -89,10 +92,11 @@ class DataV0(DataBase):
             if _key not in self.db.keys():
                 self.db[_key] = self.Signal()
             self.db[_key].seq_chunk.append(_new_chunk)
+        self._chunk_merge()
 
     def plot(self, dir_save=None, show=True, save_name_prefix=None):
         for key, signal in self.db.items():
-            if key != 'all':
+            if 'all' not in key:
                 continue
             timestamps = []
             sequences = []
@@ -158,6 +162,31 @@ class DataV1(DataV0):
         super().__init__(addr)
         self.time_templet = '%H:%M:%S'
 
+    def _chunk_merge(self):
+        _keys = list(self.db.keys())
+        for _key in _keys:
+            logging.info(f'_key --> {_key}')
+            _idx_start_max = 0
+            for chunk in self.db[_key].seq_chunk:
+                _idx_start_max = chunk.idx_s if chunk.idx_s > _idx_start_max else _idx_start_max
+            logging.info(f'_idx_start_max --> {_idx_start_max}')
+            _key_new = _key + '_all'
+            self.db[_key_new] = self.Signal()
+            all_chunks = []
+            all_chunks.extend(self.db[_key].seq_chunk)
+            sorted_chunks = sorted(all_chunks, key=lambda chunk: datetime.strptime(chunk.timestamp, self.time_templet))
+            for _chunk in sorted_chunks:
+                # logging.info(f'_chunk.timestamp --> {_chunk.timestamp}')
+                # logging.info(f'_chunk.idx_s --> {_chunk.idx_s}')
+                _chunk_ff_temperatures = [0] * (_idx_start_max + 64 - 1)
+                _chunk_ff_temperatures[_chunk.idx_s - 1:_chunk.idx_s - 1 + 64] = _chunk.seq_temperature
+                _chunk_new = self.Chunk(
+                    timestamp=_chunk.timestamp,
+                    group_id=-1,
+                    idx_s=-1,
+                    seq_temperature=_chunk_ff_temperatures)
+                self.db[_key_new].seq_chunk.append(_chunk_new)
+
     def load(self):
         with open(self.addr, 'r', encoding='ISO-8859-1') as file:
             reader = csv.reader(file, delimiter='\t')
@@ -169,35 +198,13 @@ class DataV1(DataV0):
                 timestamp = row_lst[1]
                 _group_id = int(row_lst[4].strip("[] ").strip())
                 _idx_s = int(row_lst[5])
+                _key = '-1'  # fake cable id, -1 stand for un-known
                 temperatures = \
                     [int(temp) if 'ALARM:' not in temp else int(temp.replace('ALARM:', '')) for temp in row_lst[6:]]
                 temperatures = [0 if x < 0 else x for x in temperatures]
                 # logging.info((timestamp, _idx_s, temperatures))
                 chunk = self.Chunk(timestamp=timestamp, group_id=_group_id, idx_s=_idx_s, seq_temperature=temperatures)
-                if _idx_s not in self.db.keys():
-                    self.db[_idx_s] = self.Signal()
-                self.db[_idx_s].seq_chunk.append(chunk)
-
-        # for _key in self.db.keys():
-        #     logging.info(f'_key --> {_key}')
-        _key_max = max(self.db.keys())
-        # _num_valid_group = len(self.db.keys())
-        _key_new = 'all'
-        self.db[_key_new] = self.Signal()
-        all_chunks = []
-        for signal in self.db.values():
-            all_chunks.extend(signal.seq_chunk)
-        sorted_chunks = sorted(all_chunks, key=lambda chunk: datetime.strptime(chunk.timestamp, self.time_templet))
-        for _chunk in sorted_chunks:
-            # logging.info(f'_chunk.timestamp --> {_chunk.timestamp}')
-            # logging.info(f'_chunk.idx_s --> {_chunk.idx_s}')
-            _chunk_ff_temperatures = [0] * (_key_max + 64 - 1)
-            # logging.info(f'len(_chunk_ff_temperatures) --> {len(_chunk_ff_temperatures)}')
-            _chunk_ff_temperatures[_chunk.idx_s - 1:_chunk.idx_s - 1 + 64] = _chunk.seq_temperature
-            _chunk_new = self.Chunk(
-                timestamp=_chunk.timestamp,
-                group_id=-1,
-                idx_s=-1,
-                seq_temperature=_chunk_ff_temperatures)
-            # logging.info(f'len(_chunk_ff_temperatures) --> {len(_chunk_ff_temperatures)}')
-            self.db[_key_new].seq_chunk.append(_chunk_new)
+                if _key not in self.db.keys():
+                    self.db[_key] = self.Signal()
+                self.db[_key].seq_chunk.append(chunk)
+            self._chunk_merge()
