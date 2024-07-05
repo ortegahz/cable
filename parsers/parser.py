@@ -99,3 +99,31 @@ class ParserV1CSV(ParserV1):
             db_obj = eval(self.db_type)(_path)
             db_obj.load()
             db_obj.plot(dir_save=self.dir_plot_save, show=False, save_name_prefix=_name)
+
+
+class ParserV2CSV(ParserBase):
+    """
+    format: dir/<arbitrary>/<arbitrary>/... [with CSV files]
+    """
+
+    def __init__(self, db_type, addr_in, dir_plot_save):
+        super().__init__(db_type, dir_plot_save)
+        self.dir_in = addr_in
+
+    def _get_filtered_paths(self):
+        csv_paths = glob.glob(os.path.join(self.dir_in, '**', '*.CSV'), recursive=True)
+        return csv_paths
+
+    def parse(self):
+        _paths = self._get_filtered_paths()
+        logging.info(_paths)
+        for _path in _paths:
+            _basename = os.path.basename(_path)
+            _name, _ = os.path.splitext(_basename)
+            logging.info(_path)
+            db_obj = eval(self.db_type)(_path)
+            if db_obj.load() < 0:
+                continue
+            _dir_plot_save = _path.replace(self.dir_in, self.dir_plot_save)
+            make_dirs(_dir_plot_save, reset=False)
+            db_obj.plot(dir_save=_dir_plot_save, show=False, save_name_prefix=_name)

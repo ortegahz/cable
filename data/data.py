@@ -1,6 +1,8 @@
 import csv
+import io
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -197,8 +199,16 @@ class DataV1(DataV0):
                     seq_temperature=_chunk_ff_temperatures)
                 self.db[_key_new].seq_chunk.append(_chunk_new)
 
+    @staticmethod
+    def _remove_nul_bytes(input_file):
+        with open(input_file, 'rb') as f:
+            content = f.read().replace(b'\x00', b'')
+        return content
+
     def load(self):
-        with open(self.addr, 'r', encoding='ISO-8859-1') as file:
+        cleaned_content = self._remove_nul_bytes(self.addr)
+        cleaned_file = io.StringIO(cleaned_content.decode('ISO-8859-1'))
+        with cleaned_file as file:
             reader = csv.reader(file, delimiter='\t')
             for row in reader:
                 row_lst = row[0].strip().split(',')
@@ -206,6 +216,8 @@ class DataV1(DataV0):
                 if len(row_lst) < 6:
                     continue
                 timestamp = row_lst[1]
+                if not re.search(r'\[.*\]', row_lst[4]):
+                    return -1
                 _group_id = int(row_lst[4].strip("[] ").strip())
                 _idx_s = int(row_lst[5])
                 _key = '-1'  # fake cable id, -1 stand for un-known
@@ -218,3 +230,4 @@ class DataV1(DataV0):
                     self.db[_key] = self.Signal()
                 self.db[_key].seq_chunk.append(chunk)
             self._chunk_merge()
+        return 0
