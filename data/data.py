@@ -187,7 +187,9 @@ class DataV1(DataV0):
                 # logging.info(f'_chunk.timestamp --> {_chunk.timestamp}')
                 # logging.info(f'_chunk.idx_s --> {_chunk.idx_s}')
                 _chunk_ff_temperatures = [0] * (_idx_start_max + 64 - 1)
+                _chunk.idx_s = 1 if _chunk.idx_s == 0 else _chunk.idx_s  # for data compatibility
                 _chunk_ff_temperatures[_chunk.idx_s - 1:_chunk.idx_s - 1 + 64] = _chunk.seq_temperature
+                # logging.info(f'len(_chunk_ff_temperatures) --> {len(_chunk_ff_temperatures)}')
                 _chunk_new = self.Chunk(
                     timestamp=_chunk.timestamp,
                     group_id=-1,
