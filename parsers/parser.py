@@ -30,8 +30,8 @@ class ParserV0(ParserBase):
         logging.info(self.path_in)
         db_obj = eval(self.db_type)(self.path_in)
         db_obj.load()
-        db_obj.plot(dir_save=self.dir_plot_save, show=True, save_name_prefix=_name)
-        db_obj.save_to_csv(os.path.join(self.dir_plot_save, _name + '.csv'))
+        # db_obj.plot(dir_save=self.dir_plot_save, show=True, save_name_prefix=_name)
+        db_obj.save_to_csv(self.dir_plot_save, _name)
 
 
 class ParserV0CSV(ParserBase):
@@ -75,8 +75,8 @@ class ParserV1(ParserBase):
             logging.info(_path)
             db_obj = eval(self.db_type)(_path)
             db_obj.load()
-            db_obj.plot(dir_save=self.dir_plot_save, show=False, save_name_prefix=_name)
-            db_obj.save_to_csv(os.path.join(self.dir_plot_save, _name + '.csv'))
+            # db_obj.plot(dir_save=self.dir_plot_save, show=False, save_name_prefix=_name)
+            db_obj.save_to_csv(self.dir_plot_save, _name)
 
 
 class ParserV1CSV(ParserV1):

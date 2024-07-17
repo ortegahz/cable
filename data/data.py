@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -54,24 +54,39 @@ class DataV0(DataBase):
 
             _key_new = _key + '_all'
             self.db[_key_new] = self.Signal()
-            all_chunks = []
-            all_chunks.extend(self.db[_key].seq_chunk)
-            sorted_chunks = sorted(all_chunks, key=lambda chunk: datetime.strptime(chunk.timestamp, self.time_templet))
+            all_chunks = sorted(self.db[_key].seq_chunk,
+                                key=lambda chunk: datetime.strptime(chunk.timestamp, self.time_templet))
+            start_time = datetime.strptime(all_chunks[0].timestamp, self.time_templet)
+            end_time = datetime.strptime(all_chunks[-1].timestamp, self.time_templet)
+            current_time = start_time
+
             _previous_temperatures = [mode_temperature] * (_idx_end_max + 1)
-            for _chunk in sorted_chunks:
-                _chunk_ff_temperatures = _previous_temperatures[:]
-                assert (_chunk.idx_end + 1 - _chunk.idx_start == len(_chunk.seq_temperature))
-                _chunk_ff_temperatures[_chunk.idx_start:_chunk.idx_end + 1] = _chunk.seq_temperature
+            chunk_index = 0
+
+            while current_time <= end_time:
+                if chunk_index < len(all_chunks) and \
+                        datetime.strptime(all_chunks[chunk_index].timestamp, self.time_templet) <= \
+                        current_time + timedelta(seconds=2):
+                    _chunk = all_chunks[chunk_index]
+                    _chunk_ff_temperatures = _previous_temperatures[:]
+                    assert (_chunk.idx_end + 1 - _chunk.idx_start == len(_chunk.seq_temperature))
+                    _chunk_ff_temperatures[_chunk.idx_start:_chunk.idx_end + 1] = _chunk.seq_temperature
+                    _previous_temperatures = _chunk_ff_temperatures[:]
+                    chunk_index += 1
+                else:
+                    _chunk_ff_temperatures = _previous_temperatures[:]
+
                 _chunk_new = self.Chunk(
-                    timestamp=_chunk.timestamp,
+                    timestamp=current_time.strftime(self.time_templet),
                     net='',
                     module_id=-1,
                     cable_id=-1,
                     idx_start=-1,
                     idx_end=-1,
                     seq_temperature=_chunk_ff_temperatures)
-                _previous_temperatures = _chunk_ff_temperatures[:]
+
                 self.db[_key_new].seq_chunk.append(_chunk_new)
+                current_time += timedelta(seconds=2)
 
     def load(self):
         # logging.info(self.addr)
@@ -187,27 +202,55 @@ class DataV0(DataBase):
                 new_chunks.append(new_chunk)
         return new_chunks
 
-    def save_to_csv(self, csv_file):
+    def save_to_csv(self, csv_dir, case_name):
         fieldnames = ['date1', 'time1', 'date2', 'time2', 'group', 'idx_start'] + [
             f'temperature_{i}' for i in range(64)]
-        with open(csv_file, 'w', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            # writer.writeheader()
-            for key, signal in self.db.items():
-                if 'all' not in key:
-                    continue
-                chunks = self._split_chunks(signal)
-                for chunk in chunks:
-                    row = {
-                        'date1': '24-07-16',
-                        'time1': chunk.timestamp,
-                        'date2': '24-07-16',
-                        'time2': chunk.timestamp,
-                        'group': f'[{chunk.module_id}]',
-                        'idx_start': chunk.idx_start,
-                    }
-                    row.update({f'temperature_{i}': chunk.seq_temperature[i] for i in range(64)})
-                    writer.writerow(row)
+
+        for key, signal in self.db.items():
+            if 'all' not in key:
+                continue
+
+            chunks = self._split_chunks(signal)
+            start_time = None
+            end_time = None
+            csv_file_index = 0
+            writer = None
+            csvfile = None
+
+            for chunk in chunks:
+                chunk_time = datetime.strptime(chunk.timestamp, self.time_templet)
+
+                if start_time is None:
+                    start_time = chunk_time
+                    end_time = start_time + timedelta(minutes=30)
+                    csv_file_name = os.path.join(csv_dir, f'{case_name}_segment_{csv_file_index}.csv')
+                    csvfile = open(csv_file_name, 'w', newline='')
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    # writer.writeheader()
+
+                if chunk_time >= end_time:
+                    csvfile.close()
+                    csv_file_index += 1
+                    start_time = chunk_time
+                    end_time = start_time + timedelta(minutes=30)
+                    csv_file_name = os.path.join(csv_dir, f'{case_name}_segment_{csv_file_index}.csv')
+                    csvfile = open(csv_file_name, 'w', newline='')
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    # writer.writeheader()
+
+                row = {
+                    'date1': '24-07-16',
+                    'time1': chunk.timestamp,
+                    'date2': '24-07-16',
+                    'time2': chunk.timestamp,
+                    'group': f'[{chunk.module_id}]',
+                    'idx_start': chunk.idx_start,
+                }
+                row.update({f'temperature_{i}': chunk.seq_temperature[i] for i in range(64)})
+                writer.writerow(row)
+
+            if csvfile:
+                csvfile.close()
 
 
 class DataV1(DataV0):
