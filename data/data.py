@@ -8,6 +8,7 @@ from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import mode
 
 
 class DataBase:
@@ -42,18 +43,23 @@ class DataV0(DataBase):
         for _key in _keys:
             logging.info(f'_key --> {_key}')
             _idx_end_max = 0
+            all_temperatures = []
             for chunk in self.db[_key].seq_chunk:
                 _idx_end_max = chunk.idx_end if chunk.idx_end > _idx_end_max else _idx_end_max
+                all_temperatures.extend(chunk.seq_temperature)
             logging.info(f'_idx_end_max --> {_idx_end_max}')
+
+            mode_temperature = mode(all_temperatures).mode[0] if all_temperatures else 0
+            logging.info(f'Mode of temperatures --> {mode_temperature}')
+
             _key_new = _key + '_all'
             self.db[_key_new] = self.Signal()
             all_chunks = []
             all_chunks.extend(self.db[_key].seq_chunk)
             sorted_chunks = sorted(all_chunks, key=lambda chunk: datetime.strptime(chunk.timestamp, self.time_templet))
+            _previous_temperatures = [mode_temperature] * (_idx_end_max + 1)
             for _chunk in sorted_chunks:
-                # logging.info(f'_chunk.timestamp --> {_chunk.timestamp}')
-                # logging.info(f'_chunk.idx_s --> {_chunk.idx_s}')
-                _chunk_ff_temperatures = [0] * (_idx_end_max + 1)
+                _chunk_ff_temperatures = _previous_temperatures[:]
                 assert (_chunk.idx_end + 1 - _chunk.idx_start == len(_chunk.seq_temperature))
                 _chunk_ff_temperatures[_chunk.idx_start:_chunk.idx_end + 1] = _chunk.seq_temperature
                 _chunk_new = self.Chunk(
@@ -64,7 +70,7 @@ class DataV0(DataBase):
                     idx_start=-1,
                     idx_end=-1,
                     seq_temperature=_chunk_ff_temperatures)
-                # logging.info(f'len(_chunk_new.seq_temperature) --> {len(_chunk_new.seq_temperature)}')
+                _previous_temperatures = _chunk_ff_temperatures[:]
                 self.db[_key_new].seq_chunk.append(_chunk_new)
 
     def load(self):
@@ -82,10 +88,10 @@ class DataV0(DataBase):
             _idx_start, _idx_end = _tmp.strip().split('~')
             _seq_temperature_str_lst = part_r[:-1].strip().split(',')
             _seq_temperature = [int(num) for num in _seq_temperature_str_lst]
-            _seq_temperature = [512 if x == -97 else x for x in _seq_temperature]  # diff alarm
-            _seq_temperature = [1024 if x == -98 else x for x in _seq_temperature]  # const alarm
-            _seq_temperature = [0 if x < 0 else x for x in _seq_temperature]
-            _seq_temperature_warning = [x for x in _seq_temperature if x < 0]
+            # _seq_temperature = [512 if x == -97 else x for x in _seq_temperature]  # diff alarm
+            # _seq_temperature = [1024 if x == -98 else x for x in _seq_temperature]  # const alarm
+            # _seq_temperature = [0 if x < 0 else x for x in _seq_temperature]
+            # _seq_temperature_warning = [x for x in _seq_temperature if x < 0]
             # if len(_seq_temperature_warning) > 0:
             #     logging.info(f'_seq_temperature_warning --> {_seq_temperature_warning}')
             # logging.info(
@@ -112,7 +118,8 @@ class DataV0(DataBase):
             sequences = []
             logging.info(key)
             for chunk in signal.seq_chunk:
-                # logging.info(f'len(chunk.seq_temperature) --> {len(chunk.seq_temperature)}')
+                logging.info(f'chunk.timestamp --> {chunk.timestamp}')
+                logging.info(f'chunk.seq_temperature --> {chunk.seq_temperature}')
                 timestamps.append(chunk.timestamp)
                 sequences.append(chunk.seq_temperature)
 
@@ -134,8 +141,10 @@ class DataV0(DataBase):
 
             fig = plt.figure(figsize=(12, 8))
             ax = fig.add_subplot(111, projection='3d')
-            surf = ax.plot_surface(x, y, z, cmap='coolwarm', edgecolor='none', vmin=0, vmax=100)
-            fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Temperature')
+            # _res = ax.plot_surface(x, y, z, cmap='coolwarm', edgecolor='none', vmin=0, vmax=100)
+            # _res = ax.plot_wireframe(x, y, z, color='blue')
+            _res = ax.scatter(x, y, z)
+            fig.colorbar(_res, ax=ax, shrink=0.5, aspect=5, label='Temperature')
 
             ax.set_zlim(0, 100)
             ax.set_zticks(np.arange(0, 101, 10))
@@ -154,6 +163,51 @@ class DataV0(DataBase):
                 plt.savefig(os.path.join(dir_save, save_name))
                 DataV0._cnt += 1
             plt.close(fig)
+
+    def _split_chunks(self, signal):
+        new_chunks = []
+        all_temperatures = [temp for chunk in signal.seq_chunk for temp in chunk.seq_temperature]
+        mode_temperature = mode(all_temperatures).mode[0] if all_temperatures else 0
+
+        for chunk in signal.seq_chunk:
+            temperatures = chunk.seq_temperature
+            for i in range(0, len(temperatures), 64):
+                chunk_temperatures = temperatures[i:i + 64]
+                if len(chunk_temperatures) < 64:
+                    chunk_temperatures.extend([mode_temperature] * (64 - len(chunk_temperatures)))
+                new_chunk = self.Chunk(
+                    timestamp=chunk.timestamp,
+                    net=chunk.net,
+                    module_id=i // 64,
+                    cable_id=chunk.cable_id,
+                    idx_start=i,
+                    idx_end=i + 63,
+                    seq_temperature=chunk_temperatures
+                )
+                new_chunks.append(new_chunk)
+        return new_chunks
+
+    def save_to_csv(self, csv_file):
+        fieldnames = ['date1', 'time1', 'date2', 'time2', 'group', 'idx_start'] + [
+            f'temperature_{i}' for i in range(64)]
+        with open(csv_file, 'w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            # writer.writeheader()
+            for key, signal in self.db.items():
+                if 'all' not in key:
+                    continue
+                chunks = self._split_chunks(signal)
+                for chunk in chunks:
+                    row = {
+                        'date1': '24-07-16',
+                        'time1': chunk.timestamp,
+                        'date2': '24-07-16',
+                        'time2': chunk.timestamp,
+                        'group': f'[{chunk.module_id}]',
+                        'idx_start': chunk.idx_start,
+                    }
+                    row.update({f'temperature_{i}': chunk.seq_temperature[i] for i in range(64)})
+                    writer.writerow(row)
 
 
 class DataV1(DataV0):
