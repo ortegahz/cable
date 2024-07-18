@@ -4,10 +4,12 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timedelta
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.animation import FuncAnimation
 from scipy.stats import mode
 
 
@@ -38,7 +40,7 @@ class DataV0(DataBase):
         self.addr = addr
         self.time_templet = '%H:%M:%S.%f'
 
-    def _chunk_merge(self, time_delta=60):
+    def _chunk_merge(self, time_delta=10):
         _keys = list(self.db.keys())
         for _key in _keys:
             logging.info(f'_key --> {_key}')
@@ -177,6 +179,61 @@ class DataV0(DataBase):
                 save_name = f'{DataV0._cnt}_{save_name_prefix}_{key}.png'
                 plt.savefig(os.path.join(dir_save, save_name))
                 DataV0._cnt += 1
+            plt.close(fig)
+
+    def plot_animation(self, window_size=10):
+        for key, signal in self.db.items():
+            if 'all' not in key:
+                continue
+            timestamps = []
+            sequences = []
+            logging.info(key)
+            for chunk in signal.seq_chunk:
+                timestamps.append(chunk.timestamp)
+                sequences.append(chunk.seq_temperature)
+
+            timestamps = [datetime.strptime(ts, self.time_templet) for ts in timestamps]
+            sorted_indices = np.argsort(timestamps)
+            timestamps = [timestamps[i] for i in sorted_indices]
+            sequences = [sequences[i] for i in sorted_indices]
+
+            if len(timestamps) < 2 or len(sequences[0]) < 2:
+                logging.warning(f"Not enough data points to plot for key {key}")
+                continue
+
+            logging.info(f'DataV0._cnt --> {DataV0._cnt}')
+
+            x = np.arange(len(sequences[0]))
+            y = np.arange(len(timestamps))
+            x, y = np.meshgrid(x, y)
+            z = np.array(sequences)
+
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+
+            def update_plot(frame):
+                ax.clear()
+                start_idx = frame
+                end_idx = start_idx + window_size
+                if end_idx > len(timestamps):
+                    end_idx = len(timestamps)
+                _x = x[start_idx:end_idx]
+                _y = y[start_idx:end_idx]
+                _z = z[start_idx:end_idx, :]
+                _res = ax.scatter(_x, _y, _z)
+                ax.set_zlim(0, 100)
+                ax.set_zticks(np.arange(0, 101, 10))
+                ax.set_xlabel('Index')
+                ax.set_ylabel('Timestamp')
+                ax.set_zlabel('Temperature')
+                ax.set_title(f'3D Scatter Plot of Sequences over Time for key {key}')
+                ax.set_yticks(np.arange(start_idx, end_idx))
+                ax.set_yticklabels([timestamps[i].strftime('%H:%M:%S') for i in range(start_idx, end_idx)])
+                return _res,
+
+            num_frames = len(timestamps) - window_size + 1
+            anim = FuncAnimation(fig, update_plot, frames=num_frames, blit=False, repeat=False)
+            plt.show()
             plt.close(fig)
 
     def _split_chunks(self, signal):

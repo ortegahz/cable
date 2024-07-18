@@ -6,8 +6,9 @@ from utils.utils import set_logging
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--addr', default='/media/manu/data/cable/data_v3/fire-alarm/heta-cable.2024-05-24.0.log')
-    # parser.add_argument('--addr', default='/media/manu/data/cable/data_v3/fire-alarm/')
+    # parser.add_argument('--addr',
+    #                     default='/media/manu/data/cable/data_v3/fire-alarm_split/heta-cable.2024-05-29.0_0.txt')
+    parser.add_argument('--addr', default='/media/manu/data/cable/data_v3/fire-alarm_split/')
     parser.add_argument('--db_type', default='DataV0')
     # parser.add_argument('--addr', default='/home/manu/tmp/cable_demo_parser_save_v2/heta-cable.2024-06-16.0_segment_2.csv')
     # parser.add_argument('--addr', default='/home/manu/tmp/cable_demo_parser_save_v2')
@@ -24,8 +25,8 @@ def parse_args():
 
 def run(args):
     logging.info(args)
-    parser = ParserV0(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
-    # parser = ParserV1(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
+    # parser = ParserV0(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
+    parser = ParserV1(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
     # parser = ParserV0CSV(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
     # parser = ParserV1CSV(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
     # parser = ParserV2CSV(db_type=args.db_type, addr_in=args.addr, dir_plot_save=args.dir_plot_save)
