@@ -38,7 +38,7 @@ class DataV0(DataBase):
         self.addr = addr
         self.time_templet = '%H:%M:%S.%f'
 
-    def _chunk_merge(self):
+    def _chunk_merge(self, time_delta=60):
         _keys = list(self.db.keys())
         for _key in _keys:
             logging.info(f'_key --> {_key}')
@@ -66,7 +66,7 @@ class DataV0(DataBase):
             while current_time <= end_time:
                 if chunk_index < len(all_chunks) and \
                         datetime.strptime(all_chunks[chunk_index].timestamp, self.time_templet) <= \
-                        current_time + timedelta(seconds=2):
+                        current_time + timedelta(seconds=time_delta):
                     _chunk = all_chunks[chunk_index]
                     _chunk_ff_temperatures = _previous_temperatures[:]
                     assert (_chunk.idx_end + 1 - _chunk.idx_start == len(_chunk.seq_temperature))
@@ -86,7 +86,7 @@ class DataV0(DataBase):
                     seq_temperature=_chunk_ff_temperatures)
 
                 self.db[_key_new].seq_chunk.append(_chunk_new)
-                current_time += timedelta(seconds=2)
+                current_time += timedelta(seconds=time_delta)
 
     def load(self):
         # logging.info(self.addr)
@@ -133,8 +133,8 @@ class DataV0(DataBase):
             sequences = []
             logging.info(key)
             for chunk in signal.seq_chunk:
-                logging.info(f'chunk.timestamp --> {chunk.timestamp}')
-                logging.info(f'chunk.seq_temperature --> {chunk.seq_temperature}')
+                # logging.info(f'chunk.timestamp --> {chunk.timestamp}')
+                # logging.info(f'chunk.seq_temperature --> {chunk.seq_temperature}')
                 timestamps.append(chunk.timestamp)
                 sequences.append(chunk.seq_temperature)
 
@@ -202,7 +202,7 @@ class DataV0(DataBase):
                 new_chunks.append(new_chunk)
         return new_chunks
 
-    def save_to_csv(self, csv_dir, case_name):
+    def save_to_csv(self, csv_dir, case_name, time_delta=16):
         fieldnames = ['date1', 'time1', 'date2', 'time2', 'group', 'idx_start'] + [
             f'temperature_{i}' for i in range(64)]
 
@@ -222,7 +222,7 @@ class DataV0(DataBase):
 
                 if start_time is None:
                     start_time = chunk_time
-                    end_time = start_time + timedelta(minutes=30)
+                    end_time = start_time + timedelta(seconds=time_delta)
                     csv_file_name = os.path.join(csv_dir, f'{case_name}_segment_{csv_file_index}.csv')
                     csvfile = open(csv_file_name, 'w', newline='')
                     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -232,7 +232,7 @@ class DataV0(DataBase):
                     csvfile.close()
                     csv_file_index += 1
                     start_time = chunk_time
-                    end_time = start_time + timedelta(minutes=30)
+                    end_time = start_time + timedelta(seconds=time_delta)
                     csv_file_name = os.path.join(csv_dir, f'{case_name}_segment_{csv_file_index}.csv')
                     csvfile = open(csv_file_name, 'w', newline='')
                     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -267,7 +267,7 @@ class DataV1(DataV0):
 
     def __init__(self, addr):
         super().__init__(addr)
-        self.time_templet = '%H:%M:%S'
+        self.time_templet = '%H:%M:%S.%f'
 
     def _chunk_merge(self):
         _keys = list(self.db.keys())
@@ -282,19 +282,38 @@ class DataV1(DataV0):
             all_chunks = []
             all_chunks.extend(self.db[_key].seq_chunk)
             sorted_chunks = sorted(all_chunks, key=lambda chunk: datetime.strptime(chunk.timestamp, self.time_templet))
+
+            current_chunk = None
+            current_timestamp = None
+
             for _chunk in sorted_chunks:
                 # logging.info(f'_chunk.timestamp --> {_chunk.timestamp}')
                 # logging.info(f'_chunk.idx_s --> {_chunk.idx_s}')
-                _chunk_ff_temperatures = [0] * (_idx_start_max + 64 - 1)
+                # logging.info(f'_chunk.seq_temperature --> {_chunk.seq_temperature}')
+
+                if current_timestamp is None or _chunk.timestamp != current_timestamp:
+                    if current_chunk is not None:
+                        self.db[_key_new].seq_chunk.append(current_chunk)
+                        # logging.info(f'current_chunk.timestamp --> {current_chunk.timestamp}')
+                        # logging.info(f'current_chunk.idx_s --> {current_chunk.idx_s}')
+                        # logging.info(f'current_chunk.seq_temperature --> {current_chunk.seq_temperature}')
+
+                    current_chunk = self.Chunk(
+                        timestamp=_chunk.timestamp,
+                        group_id=_chunk.group_id,
+                        idx_s=_chunk.idx_s,
+                        seq_temperature=[0] * (_idx_start_max + 64 - 1)
+                    )
+                    current_timestamp = _chunk.timestamp
+
                 _chunk.idx_s = 1 if _chunk.idx_s == 0 else _chunk.idx_s  # for data compatibility
-                _chunk_ff_temperatures[_chunk.idx_s - 1:_chunk.idx_s - 1 + 64] = _chunk.seq_temperature
-                # logging.info(f'len(_chunk_ff_temperatures) --> {len(_chunk_ff_temperatures)}')
-                _chunk_new = self.Chunk(
-                    timestamp=_chunk.timestamp,
-                    group_id=-1,
-                    idx_s=-1,
-                    seq_temperature=_chunk_ff_temperatures)
-                self.db[_key_new].seq_chunk.append(_chunk_new)
+                current_chunk.seq_temperature[_chunk.idx_s - 1:_chunk.idx_s - 1 + 64] = _chunk.seq_temperature
+
+            if current_chunk is not None:
+                self.db[_key_new].seq_chunk.append(current_chunk)
+                # logging.info(f'current_chunk.timestamp --> {current_chunk.timestamp}')
+                # logging.info(f'current_chunk.idx_s --> {current_chunk.idx_s}')
+                # logging.info(f'current_chunk.seq_temperature --> {current_chunk.seq_temperature}')
 
     @staticmethod
     def _remove_nul_bytes(input_file):
@@ -320,7 +339,7 @@ class DataV1(DataV0):
                 _key = '-1'  # fake cable id, -1 stand for un-known
                 temperatures = \
                     [int(temp) if 'ALARM:' not in temp else int(temp.replace('ALARM:', '')) for temp in row_lst[6:]]
-                temperatures = [0 if x < 0 else x for x in temperatures]
+                # temperatures = [0 if x < 0 else x for x in temperatures]
                 # logging.info((timestamp, _idx_s, temperatures))
                 chunk = self.Chunk(timestamp=timestamp, group_id=_group_id, idx_s=_idx_s, seq_temperature=temperatures)
                 if _key not in self.db.keys():
